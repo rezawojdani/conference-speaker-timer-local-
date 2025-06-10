@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>تایمر صحبت در سالن کنفرانس</title>
+
+  <!-- Custom font: Vazir for Persian UI -->
+  <style>
+    @font-face {
+      font-family: 'Vazir';
+      src: url('fonts/Vazir-Regular.eot');
+      src: url('fonts/Vazir-Regular.eot?#iefix') format('embedded-opentype'),
+           url('fonts/Vazirmatn-Regular.woff2') format('woff2'),
+           url('fonts/Vazir-Regular.woff') format('woff'),
+           url('fonts/Vazirmatn-Regular.ttf') format('truetype'),
+           url('fonts/Vazir.svg#svgFontName') format('svg');
+      font-weight: normal;
+      font-style: normal;
+    }
+
+    @font-face {
+      font-family: 'Vazir';
+      src: url('fonts/Vazir-Bold.eot');
+      src: url('fonts/Vazir-Bold.eot?#iefix') format('embedded-opentype'),
+           url('fonts/Vazirmatn-Bold.woff2') format('woff2'),
+           url('fonts/Vazir-Bold.woff') format('woff'),
+           url('fonts/Vazirmatn-Bold.ttf') format('truetype'),
+           url('fonts/Vazir-Bold.svg#svgFontName') format('svg');
+      font-weight: bold;
+      font-style: normal;
+    }
+
+    body {
+      font-family: 'Vazir', sans-serif;
+      padding: 20px;
+      background-color: #f9f9f9;
+      font-size: 16px;
+    }
+
+    h1 {
+      font-size: 24px;
+    }
+
+    .speaker-form input,
+    .speaker-form button,
+    .controls button,
+    li span,
+    li .timer {
+      font-size: 18px !important;
+      line-height: 1.5;
+    }
+  </style>
+
+  <style>
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      text-align: center;
+      margin-top: 0;
+    }
+
+    .speaker-form {
+      margin-bottom: 20px;
+    }
+
+    input[type="text"], input[type="number"] {
+      padding: 8px;
+      margin-left: 5px;
+    }
+
+    button {
+      padding: 6px 12px;
+      margin: 0 3px;
+      cursor: pointer;
+    }
+
+    ul {
+      list-style-type: none;
+      padding: 0;
+    }
+
+    li {
+      background: white;
+      margin: 10px 0;
+      padding: 15px;
+      border-radius: 5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 5px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .timer {
+      font-weight: bold;
+      min-width: 80px;
+      text-align: center;
+    }
+
+    .green {
+      color: green;
+    }
+
+    .red {
+      color: rgb(190, 0, 0);
+    }
+
+    .controls {
+      display: flex;
+      gap: 5px;
+    }
+
+    .delete-btn {
+      background: rgb(255, 0, 0);
+      color: white;
+      border: none;
+      margin-right: 5px;
+      padding: 5px 10px;
+      font-weight: bold;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div></div>
+  <h1>تایمر صحبت در سالن کنفرانس</h1>
+  <div style="width: 65px;"></div>
+</div>
+
+<!-- Form to add a new speaker -->
+<div class="speaker-form">
+  <input type="text" id="name" placeholder="نام شرکت کننده">
+  <input type="number" id="time" placeholder="زمان (دقیقه)">
+  <button onclick="addSpeaker()">افزودن</button>
+</div>
+
+<ul id="speakers"></ul>
+
+<button onclick="downloadReport()" style="display: block; margin-top: 20px;"><b>دانلود گزارش</b></button>
+
+<script>
+  let speakers = [];
+
+  // Load saved data on page load
+  window.onload = () => {
+    const saved = localStorage.getItem("speakers");
+    if (saved) {
+      speakers = JSON.parse(saved);
+      speakers.forEach(s => {
+        s.timer = null;
+        if (s.remainingTime > 0 && s.running) {
+          startTimer(s, true); 
+        }
+      });
+      renderSpeakers();
+    }
+  };
+
+  // Warn user before closing the tab if there are unsaved changes
+  window.addEventListener('beforeunload', function(e) {
+    if (speakers.some(s => s.remainingTime !== s.totalTime)) {
+      e.preventDefault();
+      e.returnValue = 'آیا می‌خواهید بدون ذخیره شدن تغییرات، صفحه را ببندید؟';
+    }
+  });
+
+  // Add a new speaker
+  function addSpeaker() {
+    const nameInput = document.getElementById('name');
+    const timeInput = document.getElementById('time');
+    const name = nameInput.value.trim();
+    const time = parseInt(timeInput.value.trim());
+
+    if (!name || isNaN(time) || time <= 0) {
+      alert("لطفا نام و زمان صحیح وارد کنید.");
+      return;
+    }
+
+    const speaker = {
+      id: Date.now(),
+      name: name,
+      totalTime: time * 60, 
+      remainingTime: time * 60,
+      usedTime: 0,
+      timer: null,
+      running: false
+    };
+
+    speakers.push(speaker);
+    saveData();
+    renderSpeakers();
+    nameInput.value = '';
+    timeInput.value = '';
+  }
+
+  // Render all speakers in the list
+  function renderSpeakers() {
+    const container = document.getElementById('speakers');
+    container.innerHTML = '';
+
+    speakers.forEach(s => {
+      const li = document.createElement('li');
+
+      const span = document.createElement('span');
+      span.textContent = `${s.name} : زمان مجاز صحبت ${Math.floor(s.totalTime / 60)}:${(s.totalTime % 60).toString().padStart(2, '0')} دقیقه`;
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'delete-btn';
+      deleteBtn.textContent = "×";
+      deleteBtn.onclick = () => removeSpeaker(s.id);
+
+      const timerSpan = document.createElement('span');
+      timerSpan.className = 'timer';
+      timerSpan.id = `timer-${s.id}`;
+      updateTimerDisplay(s);
+
+      const controls = document.createElement('div');
+      controls.className = 'controls';
+
+      const startBtn = document.createElement('button');
+      startBtn.textContent = "شروع";
+      startBtn.onclick = () => startTimer(s);
+
+      const pauseBtn = document.createElement('button');
+      pauseBtn.textContent = "توقف";
+      pauseBtn.onclick = () => pauseTimer(s);
+
+      const resetBtn = document.createElement('button');
+      resetBtn.textContent = "ریست";
+      resetBtn.onclick = () => confirmReset(s);
+
+      controls.appendChild(startBtn);
+      controls.appendChild(pauseBtn);
+      controls.appendChild(resetBtn);
+
+      const nameWrapper = document.createElement('div');
+      nameWrapper.style.display = 'flex';
+      nameWrapper.style.alignItems = 'center';
+      nameWrapper.style.gap = '8px';
+
+      nameWrapper.appendChild(deleteBtn);
+      nameWrapper.appendChild(span);
+
+      li.appendChild(nameWrapper);
+      li.appendChild(timerSpan);
+      li.appendChild(controls);
+
+      container.appendChild(li);
+    });
+  }
+
+  // Remove a speaker from the list
+  function removeSpeaker(id) {
+    if (confirm("آیا از حذف این شخص مطمئن هستید؟")) {
+      speakers = speakers.filter(s => s.id !== id);
+      saveData();
+      renderSpeakers();
+    }
+  }
+
+  // Update the timer display for a speaker
+  function updateTimerDisplay(speaker) {
+    const minutes = Math.floor(speaker.remainingTime / 60);
+    const seconds = speaker.remainingTime % 60;
+    const el = document.getElementById(`timer-${speaker.id}`);
+    if (el) {
+      el.textContent = `زمان باقی‌مانده: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+      if (speaker.running) {
+        el.className = 'timer green';
+      } else {
+        el.className = 'timer red';
+      }
+    }
+  }
+
+  // Start the timer for a speaker
+  function startTimer(speaker, silent = false) {
+    if (speaker.timer || speaker.remainingTime <= 0) return;
+
+    speaker.running = true;
+    speaker.timer = setInterval(() => {
+      if (speaker.remainingTime > 0) {
+        speaker.remainingTime--;
+        speaker.usedTime = speaker.totalTime - speaker.remainingTime;
+        updateTimerDisplay(speaker);
+        saveData();
+      } else {
+        clearInterval(speaker.timer);
+        speaker.timer = null;
+        speaker.running = false;
+        updateTimerDisplay(speaker);
+        saveData();
+      }
+    }, 1000);
+
+    if (!silent) saveData();
+  }
+
+  // Pause the timer for a speaker
+  function pauseTimer(speaker) {
+    if (speaker.timer) {
+      clearInterval(speaker.timer);
+      speaker.timer = null;
+      speaker.running = false;
+      updateTimerDisplay(speaker);
+      saveData();
+    }
+  }
+
+  // Reset the timer for a speaker
+  function stopTimer(speaker) {
+    pauseTimer(speaker);
+    speaker.remainingTime = speaker.totalTime;
+    speaker.usedTime = 0;
+    updateTimerDisplay(speaker);
+    saveData();
+  }
+
+  // Confirm and reset speaker's timer
+  function confirmReset(speaker) {
+    const confirmed = confirm("لطفاً قبل از ریست گزارش را دانلود کنید\nآیا اطمینان دارید؟");
+    if (confirmed) {
+      stopTimer(speaker);
+    }
+  }
+
+  // Save current state to localStorage
+  function saveData() {
+    localStorage.setItem("speakers", JSON.stringify(speakers));
+  }
+
+  // Format seconds into mm:ss string
+  function formatTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m} دقیقه و ${s} ثانیه`;
+  }
+
+  // Download report as text file
+  function downloadReport() {
+    let content = "گزارش کنفرانس\n";
+    content += "==============\n\n";
+
+    speakers.forEach(s => {
+      const total = formatTime(s.totalTime);
+      const used = formatTime(s.usedTime);
+      const remaining = s.remainingTime > 0 ? formatTime(s.remainingTime) : "هیچ";
+
+      content += `${s.name}\n`;
+      content += `زمان کلی: ${total}\n`;
+      content += `صحبت کرده: ${used}\n`;
+      content += `باقی‌مانده: ${remaining}\n`;
+      content += "--------------\n";
+    });
+
+    const blob = new Blob([content], {type: 'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'گزارش_کنفرانس.txt';
+    a.click();
+  }
+</script>
+
+</body>
+</html>
